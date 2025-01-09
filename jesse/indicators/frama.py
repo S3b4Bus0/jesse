@@ -1,10 +1,7 @@
 from typing import Union
 
 import numpy as np
-try:
-    from numba import njit
-except ImportError:
-    njit = lambda a : a
+from numba import njit
 
 from jesse.helpers import slice_candles
 
@@ -31,15 +28,15 @@ def frama(candles: np.ndarray, window: int = 10, FC: int = 1, SC: int = 300, seq
         print("FRAMA n must be even. Adding one")
         n += 1
 
-    frama = frame_fast(candles, n, SC, FC)
+    res = frame_fast(candles, n, SC, FC)
 
     if sequential:
-        return frama
+        return res
     else:
-        return frama[-1]
+        return res[-1]
 
 
-@njit
+@njit(cache=True)
 def frame_fast(candles, n, SC, FC):
     w = np.log(2.0 / (SC + 1))
 
@@ -79,10 +76,10 @@ def frame_fast(candles, n, SC, FC):
         else:
             alphas[i] = alpha_
 
-    frama = np.zeros(candles.shape[0])
-    frama[n - 1] = np.mean(candles[:, 2][:n])
-    frama[:n - 1] = np.NaN
+    frama_val = np.zeros(candles.shape[0])
+    frama_val[n - 1] = np.mean(candles[:, 2][:n])
+    frama_val[:n - 1] = np.NaN
 
-    for i in range(n, frama.shape[0]):
-        frama[i] = (alphas[i] * candles[:, 2][i]) + (1 - alphas[i]) * frama[i - 1]
-    return frama
+    for i in range(n, frama_val.shape[0]):
+        frama_val[i] = (alphas[i] * candles[:, 2][i]) + (1 - alphas[i]) * frama_val[i - 1]
+    return frama_val

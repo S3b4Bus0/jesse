@@ -1,12 +1,10 @@
 from typing import Union
 
 import numpy as np
-try:
-    from numba import njit
-except ImportError:
-    njit = lambda a : a
+from numba import njit
 
 from jesse.helpers import get_candle_source, slice_candles
+
 from .supersmoother import supersmoother_fast
 
 
@@ -40,7 +38,7 @@ def trendflex(candles: np.ndarray, period: int = 20, source_type: str = "close",
         return None if np.isnan(tf[-1]) else tf[-1]
 
 
-@njit
+@njit(cache=True)
 def trendflex_fast(ssf, period):
     tf = np.full_like(ssf, 0)
     ms = np.full_like(ssf, 0)
@@ -48,11 +46,11 @@ def trendflex_fast(ssf, period):
 
     for i in range(ssf.shape[0]):
         if i >= period:
-            sum = 0
+            my_sum = 0
             for t in range(1, period + 1):
-                sum = sum + ssf[i] - ssf[i - t]
-            sum /= period
-            sums[i] = sum
+                my_sum = my_sum + ssf[i] - ssf[i - t]
+            my_sum /= period
+            sums[i] = my_sum
 
             ms[i] = 0.04 * sums[i] * sums[i] + 0.96 * ms[i - 1]
             if ms[i] != 0:

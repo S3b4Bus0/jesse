@@ -1,11 +1,7 @@
 from typing import Union
 
 import numpy as np
-
-try:
-    from numba import njit
-except ImportError:
-    njit = lambda a: a
+from numba import njit
 
 from jesse.helpers import get_candle_source, slice_candles
 
@@ -16,7 +12,7 @@ def mwdx(candles: np.ndarray, factor: float = 0.2, source_type: str = "close", s
     MWDX Average
 
     :param candles: np.ndarray
-    :param factor: float - default: 14
+    :param factor: float - default: 0.2
     :param source_type: str - default: "close"
     :param sequential: bool - default: False
 
@@ -38,7 +34,7 @@ def mwdx(candles: np.ndarray, factor: float = 0.2, source_type: str = "close", s
     return res if sequential else res[-1]
 
 
-@njit
+@njit(cache=True)
 def mwdx_fast(source, fac):
     newseries = np.copy(source)
     for i in range(1, source.shape[0]):

@@ -3,8 +3,7 @@ from collections import namedtuple
 import numpy as np
 import talib
 
-from jesse.helpers import get_candle_source, np_shift
-from jesse.helpers import slice_candles
+from jesse.helpers import get_candle_source, np_shift, slice_candles
 
 GATOR = namedtuple('GATOR', ['upper', 'lower', 'upper_change', 'lower_change'])
 
@@ -48,7 +47,7 @@ def numpy_ewma(data, window):
     :return:
     """
     alpha = 1 / window
-    scale = 1 / (1 - alpha)
+    # scale = 1 / (1 - alpha)
     n = data.shape[0]
     scale_arr = (1 - alpha) ** (-1 * np.arange(n))
     weights = (1 - alpha) ** np.arange(n)

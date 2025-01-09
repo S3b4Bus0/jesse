@@ -1,7 +1,7 @@
 from jesse.strategies import Strategy
 
 
-# test_on_route_take_profit part 2 - ETH-USD
+# test_on_route_close_position part 2 - ETH-USD
 class Test24(Strategy):
     def should_long(self):
         return self.price == 10
@@ -16,5 +16,5 @@ class Test24(Strategy):
     def go_short(self):
         pass
 
-    def should_cancel(self):
+    def should_cancel_entry(self):
         return False

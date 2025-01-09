@@ -2,9 +2,9 @@ from collections import namedtuple
 
 import numpy as np
 import talib
-from jesse.indicators.ma import ma
 
 from jesse.helpers import slice_candles
+from jesse.indicators.ma import ma
 
 Stochastic = namedtuple('Stochastic', ['k', 'd'])
 
@@ -33,8 +33,8 @@ def stoch(candles: np.ndarray, fastk_period: int = 14, slowk_period: int = 3, sl
     hh = talib.MAX(candles_high, fastk_period)
     ll = talib.MIN(candles_low, fastk_period)
 
-    stoch = 100 * (candles_close - ll) / (hh - ll)
-    k = ma(stoch, period=slowk_period, matype=slowk_matype, sequential=True)
+    stoch_val = 100 * (candles_close - ll) / (hh - ll)
+    k = ma(stoch_val, period=slowk_period, matype=slowk_matype, sequential=True)
     d = ma(k, period=slowd_period, matype=slowd_matype, sequential=True)
 
     if sequential:

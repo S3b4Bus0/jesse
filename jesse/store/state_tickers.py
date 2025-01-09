@@ -3,7 +3,7 @@ from typing import List
 import numpy as np
 
 import jesse.helpers as jh
-from jesse.config import config
+from jesse.services import selectors
 from jesse.libs import DynamicNumpyArray
 from jesse.models import store_ticker_into_db, Ticker
 
@@ -13,8 +13,9 @@ class TickersState:
         self.storage = {}
 
     def init_storage(self) -> None:
-        for c in config['app']['considering_candles']:
-            key = jh.key(c[0], c[1])
+        for ar in selectors.get_all_routes():
+            exchange, symbol = ar['exchange'], ar['symbol']
+            key = jh.key(exchange, symbol)
             self.storage[key] = DynamicNumpyArray((60, 5), drop_at=120)
 
     def add_ticker(self, ticker: np.ndarray, exchange: str, symbol: str) -> None:
@@ -23,10 +24,6 @@ class TickersState:
         # only process once per second
         if len(self.storage[key][:]) == 0 or jh.now_to_timestamp() - self.storage[key][-1][0] >= 1000:
             self.storage[key].append(ticker)
-
-            if jh.is_collecting_data():
-                store_ticker_into_db(exchange, symbol, ticker)
-                return
 
     def get_tickers(self, exchange: str, symbol: str) -> List[Ticker]:
         key = jh.key(exchange, symbol)

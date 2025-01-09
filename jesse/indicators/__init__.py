@@ -53,6 +53,7 @@ from .frama import frama
 from .fwma import fwma
 from .gatorosc import gatorosc
 from .gauss import gauss
+from .heikin_ashi_candles import heikin_ashi_candles
 from .high_pass import high_pass
 from .high_pass_2_pole import high_pass_2_pole
 from .hma import hma
@@ -114,6 +115,7 @@ from .pvi import pvi
 from .pwma import pwma
 from .qstick import qstick
 from .reflex import reflex
+from .rma import rma
 from .roc import roc
 from .rocp import rocp
 from .rocr import rocr
@@ -173,3 +175,10 @@ from .wma import wma
 from .wt import wt
 from .zlema import zlema
 from .zscore import zscore
+from .waddah_attr_explosion import waddah_attar_explosion
+from .stiffness import stiffness
+from .ttm_squeeze import ttm_squeeze
+from .support_resistance_with_break import support_resistance_with_breaks
+from .squeeze_momentum import squeeze_momentum
+from .hull_suit import hull_suit
+from .volume import volume

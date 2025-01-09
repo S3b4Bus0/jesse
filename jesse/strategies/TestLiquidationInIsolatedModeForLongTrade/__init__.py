@@ -16,7 +16,8 @@ class TestLiquidationInIsolatedModeForLongTrade(Strategy):
         if self.index == 0:
             assert self.balance == 10000
             assert self.leverage == 2
-            assert self.available_margin == 20000
+            assert self.leveraged_available_margin == 20000
+            assert self.available_margin == 10000
             assert self.position.mode == 'isolated'
 
         return self.price == 80
@@ -31,5 +32,5 @@ class TestLiquidationInIsolatedModeForLongTrade(Strategy):
     def go_short(self):
         pass
 
-    def should_cancel(self):
+    def should_cancel_entry(self):
         return False

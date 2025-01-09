@@ -1,23 +1,6 @@
 from jesse.enums import exchanges
 from jesse.models import Position
-from .utils import set_up, single_route_backtest
-
-
-def test_close_position():
-    set_up()
-
-    p = Position(exchanges.SANDBOX, 'BTC-USDT', {
-        'entry_price': 50,
-        'current_price': 50,
-        'qty': 2,
-    })
-    assert p.exit_price is None
-
-    p._close(50)
-
-    assert p.qty == 0
-    assert p.entry_price is None
-    assert p.exit_price == 50
+from jesse.testing_utils import set_up, single_route_backtest
 
 
 def test_increase_a_long_position():
@@ -29,7 +12,7 @@ def test_increase_a_long_position():
         'qty': 2,
     })
 
-    p._increase(2, 100)
+    p._mutating_increase(2, 100)
 
     assert p.qty == 4
     assert p.entry_price == 75
@@ -44,7 +27,7 @@ def test_increase_a_short_position():
         'qty': -2,
     })
 
-    p._increase(2, 40)
+    p._mutating_increase(2, 40)
 
     assert p.qty == -4
     assert p.entry_price == 45
@@ -75,7 +58,7 @@ def test_is_able_to_close_via_reduce_position_too():
         'qty': 2,
     })
 
-    p._reduce(2, 50)
+    p._mutating_reduce(2, 50)
 
     assert p.qty == 0
 
@@ -90,7 +73,7 @@ def test_open_position():
     assert p.exit_price is None
     assert p.current_price is None
 
-    p._open(1, 50)
+    p._mutating_open(1, 50)
 
     assert p.qty == 1
     assert p.entry_price == 50
@@ -178,7 +161,7 @@ def test_position_pnl_percentage():
 def test_position_roi():
     set_up()
     p = Position(exchanges.SANDBOX, 'BTC-USDT')
-    p._open(3, 100)
+    p._mutating_open(3, 100)
     p.current_price = 110
 
     assert p.value == 330
@@ -208,6 +191,9 @@ def test_position_value():
     assert long_position.value == 100
     assert short_position.value == 100
 
+    closed_position_value = Position(exchanges.SANDBOX, 'BTC-USDT', {'qty': 0})
+    assert closed_position_value.value == 0
+
 
 def test_position_with_leverage():
     # with 1x leverage
@@ -226,7 +212,7 @@ def test_reduce_a_long_position():
         'qty': 2,
     })
 
-    p._reduce(1, 50)
+    p._mutating_reduce(1, 50)
 
     assert p.qty == 1
 
@@ -240,8 +226,34 @@ def test_reduce_a_short_position():
         'qty': -2,
     })
 
-    p._reduce(1, 50)
+    p._mutating_reduce(1, 50)
 
     assert p.qty == -1
 
+
+def test_position_exchange_type_property():
+    single_route_backtest(
+        'TestPositionExchangeTypeProperty1',
+        is_futures_trading=True
+    )
+
+    single_route_backtest(
+        'TestPositionExchangeTypeProperty2',
+        is_futures_trading=False
+    )
+
+
+def test_position_total_cost_property():
+    # futures
+    single_route_backtest(
+        'TestPositionTotalCostProperty',
+        is_futures_trading=True,
+        leverage=2
+    )
+
+    # spot
+    single_route_backtest(
+        'TestPositionTotalCostProperty',
+        is_futures_trading=False
+    )
 

@@ -3,8 +3,7 @@ from typing import Union
 import numpy as np
 import talib
 
-from jesse.helpers import get_candle_source
-from jesse.helpers import slice_candles
+from jesse.helpers import get_candle_source, slice_candles
 
 
 def var(candles: np.ndarray, period: int = 14, nbdev: float = 1, source_type: str = "close",
@@ -23,6 +22,6 @@ def var(candles: np.ndarray, period: int = 14, nbdev: float = 1, source_type: st
     candles = slice_candles(candles, sequential)
 
     source = get_candle_source(candles, source_type=source_type)
-    res = talib.VAR(candles[:, 2], timeperiod=period, nbdev=nbdev)
+    res = talib.VAR(source, timeperiod=period, nbdev=nbdev)
 
     return res if sequential else res[-1]

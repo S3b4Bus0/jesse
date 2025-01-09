@@ -1,7 +1,7 @@
 from jesse.strategies import Strategy
 
 
-# test_on_route_stop_loss part 1 - BTC-USD
+# test_on_route_close_position part 1 - BTC-USD
 class Test25(Strategy):
     def should_long(self):
         # buy on market at first candle, close when on_route_stop_loss event is fired
@@ -17,12 +17,8 @@ class Test25(Strategy):
     def go_short(self):
         pass
 
-    def should_cancel(self):
+    def should_cancel_entry(self):
         return False
 
-    def on_route_stop_loss(self, strategy):
-        """
-
-        :param strategy:
-        """
+    def on_route_close_position(self, strategy):
         self.take_profit = 1, self.price

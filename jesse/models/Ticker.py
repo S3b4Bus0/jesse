@@ -1,8 +1,5 @@
 import peewee
 
-import jesse.helpers as jh
-from jesse.services.db import db
-
 
 class Ticker(peewee.Model):
     id = peewee.UUIDField(primary_key=True)
@@ -20,19 +17,17 @@ class Ticker(peewee.Model):
     exchange = peewee.CharField()
 
     class Meta:
-        database = db
-        indexes = ((('timestamp', 'exchange', 'symbol'), True),)
+        from jesse.services.db import database
 
-    def __init__(self, attributes=None, **kwargs) -> None:
+        database = database.db
+        indexes = ((('exchange', 'symbol', 'timestamp'), True),)
+
+    def __init__(self, attributes: dict = None, **kwargs) -> None:
         peewee.Model.__init__(self, attributes=attributes, **kwargs)
 
         if attributes is None:
             attributes = {}
 
-        for a in attributes:
-            setattr(self, a, attributes[a])
+        for a, value in attributes.items():
+            setattr(self, a, value)
 
-
-if not jh.is_unit_testing():
-    # create the table
-    Ticker.create_table()
