@@ -8,28 +8,28 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
-    
-concurrency: 
+
+concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-
     runs-on:  ${{matrix.os}}
     strategy:
       matrix:
-       # os: [ubuntu-latest, macos-latest, windows-latest]
-        os: [ubuntu-latest]
-        include: 
+        # os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
+        # os: [ubuntu-latest]
+        include:
         - os: ubuntu-latest
           path: ~/.cache/pip
-        #- os: macos-latest
+        #- os: macos-latest-xlarge
         #  path: ~/Library/Caches/pip
         #- os: windows-latest
         #  path: ~\AppData\Local\pip\Cache
-        python-version: [3.7, 3.8, 3.9]
-        
+        # python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.10', '3.11', '3.12', '3.13']
 
     steps:
       - name: Checkout
@@ -39,43 +39,24 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Cache pip
-        uses: actions/cache@v2
+        uses: actions/cache@v3
+        id: cache
         with:
           path: ${{ matrix.path }}
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
            ${{ runner.os }}-pip-
-      - name: Install ta-lib
-        run: |
-          if ([ "$RUNNER_OS" = "macOS" ]); then
-            brew install ta-lib
-          fi
-          if ([ "$RUNNER_OS" = "Linux" ]); then
-            if [ ! -f "$GITHUB_WORKSPACE/ta-lib/src" ]; then wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz -q && tar -xzf ta-lib-0.4.0-src.tar.gz; fi
-            cd ta-lib/
-            ./configure --prefix=/usr
-            if [ ! -f "$HOME/ta-lib/src" ]; then make; fi
-            sudo make install
-            cd
-          fi
-          if ([ "$RUNNER_OS" = "Windows" ]); then
-            curl -sL http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-msvc.zip -o $GITHUB_WORKSPACE/ta-lib.zip --create-dirs && 7z x $GITHUB_WORKSPACE/ta-lib.zip -o/c/ta-lib && mv /c/ta-lib/ta-lib/* /c/ta-lib/ && rm -rf /c/ta-lib/ta-lib && cd /c/ta-lib/c/make/cdr/win32/msvc && nmake
-          fi
       - name: Install dependencies
+        shell: bash
         run: |
+          python -m ensurepip --upgrade
           python -m pip install --upgrade pip
+          python -m pip install setuptools wheel
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install numba
-     # - name: Lint with flake8
-       # run: |
-          # stop the build if there are Python syntax errors or undefined names
-          # flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-          # flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      - name: Install jesse
-        run: |
+          if [ ! ${{ matrix.python-version }} = "3.10" ]; then pip install numba; fi
           pip install -e . -U
       - name: Test with pytest
+        shell: bash
         run: |
           pip install pytest
           pytest

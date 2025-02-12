@@ -1,5 +1,4 @@
 from jesse.strategies import Strategy
-from jesse import utils
 
 
 class TestLiquidationInIsolatedModeForShortTrade(Strategy):
@@ -11,7 +10,8 @@ class TestLiquidationInIsolatedModeForShortTrade(Strategy):
         if self.index == 0:
             assert self.balance == 10000
             assert self.leverage == 2
-            assert self.available_margin == 20000
+            assert self.available_margin == 10000
+            assert self.leveraged_available_margin == 20000
 
         # the liquidation price is at $14.94 so at $15:
         if self.price == 15:
@@ -33,5 +33,5 @@ class TestLiquidationInIsolatedModeForShortTrade(Strategy):
         # utils.size_to_qty(self.available_margin, self.price) == 2000
         self.sell = 2000, self.price
 
-    def should_cancel(self):
+    def should_cancel_entry(self):
         return False

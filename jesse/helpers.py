@@ -1,24 +1,34 @@
 import hashlib
 import math
 import os
+import gzip
+import json
+from functools import lru_cache
 import random
 import string
 import sys
 import uuid
-from typing import List, Tuple, Union, Any
-
+from typing import List, Tuple, Union, Any, Optional
+from pprint import pprint
 import arrow
 import click
 import numpy as np
+import base64
+
 
 CACHED_CONFIG = dict()
 
 
 def app_currency() -> str:
+    from jesse.info import exchange_info
     from jesse.routes import router
-    return quote_asset(router.routes[0].symbol)
+    if router.routes[0].exchange in exchange_info and 'settlement_currency' in exchange_info[router.routes[0].exchange]:
+        return exchange_info[router.routes[0].exchange]['settlement_currency']
+    else:
+        return quote_asset(router.routes[0].symbol)
 
 
+@lru_cache
 def app_mode() -> str:
     from jesse.config import config
     return config['app']['trading_mode']
@@ -99,6 +109,64 @@ def convert_number(old_max: float, old_min: float, new_max: float, new_min: floa
 
 def dashless_symbol(symbol: str) -> str:
     return symbol.replace("-", "")
+
+
+def dashy_symbol(symbol: str) -> str:
+    # if already has '-' in symbol, return symbol
+    if '-' in symbol:
+        return symbol
+
+    from jesse.config import config
+
+    for s in config['app']['considering_symbols']:
+        compare_symbol = dashless_symbol(s)
+        if compare_symbol == symbol:
+            return s
+
+    if symbol.endswith('EUR'):
+        return symbol[:-3] + '-EUR'
+    if symbol.endswith('EUT'):
+        return symbol[:-3] + '-EUT'
+    if symbol.endswith('GBP'):
+        return symbol[:-3] + '-GBP'
+    if symbol.endswith('JPY'):
+        return symbol[:-3] + '-JPY'
+    if symbol.endswith('MIM'):
+        return symbol[:-3] + '-MIM'
+    if symbol.endswith('TRY'):
+        return symbol[:-3] + '-TRY'
+    if symbol.endswith('FDUSD'):
+        return symbol[:-5] + '-FDUSD'
+    if symbol.endswith('TUSD'):
+        return symbol[:-4] + '-TUSD'
+    if symbol.endswith('UST'):
+        return symbol[:-3] + '-UST'
+    if symbol.endswith('USDT'):
+        return symbol[:-4] + '-USDT'
+    if symbol.endswith('USDC'):
+        return symbol[:-4] + '-USDC'
+    if symbol.endswith('USDS'):
+        return symbol[:-4] + '-USDS'
+    if symbol.endswith('USDP'):
+        return symbol[:-4] + '-USDP'
+    if symbol.endswith('USDU'):
+        return symbol[:-4] + '-USDU'
+    if symbol.endswith('USD'):
+        return symbol[:-3] + '-USD'
+
+    if len(symbol) > 7 and symbol.endswith('SUSDT'):
+        # ex: SETHSUSDT => SETH-SUSDT
+        return symbol[:-5] + '-' + symbol[-5:]
+
+    return f"{symbol[0:3]}-{symbol[3:]}"
+
+
+def underline_to_dashy_symbol(symbol: str) -> str:
+    return symbol.replace('_', '-')
+
+
+def dashy_to_underline(symbol: str) -> str:
+    return symbol.replace('-', '_')
 
 
 def date_diff_in_days(date1: arrow.arrow.Arrow, date2: arrow.arrow.Arrow) -> int:
@@ -193,6 +261,16 @@ def file_exists(path: str) -> bool:
     return os.path.isfile(path)
 
 
+def clear_file(path: str) -> None:
+    with open(path, 'w') as f:
+        f.write('')
+
+
+def make_directory(path: str) -> None:
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+
 def floor_with_precision(num: float, precision: int = 0) -> float:
     temp = 10 ** precision
     return math.floor(num * temp) / temp
@@ -204,6 +282,10 @@ def format_currency(num: float) -> str:
 
 def generate_unique_id() -> str:
     return str(uuid.uuid4())
+
+
+def generate_short_unique_id() -> str:
+    return str(uuid.uuid4())[:22]
 
 
 def get_arrow(timestamp: int) -> arrow.arrow.Arrow:
@@ -265,13 +347,63 @@ def get_config(keys: str, default: Any = None) -> Any:
     return CACHED_CONFIG[keys]
 
 
+def get_store():
+    from jesse.store import store
+    return store
+
+
 def get_strategy_class(strategy_name: str):
     from pydoc import locate
+    import os
+    import re
 
-    if is_unit_testing():
-        return locate(f'jesse.strategies.{strategy_name}.{strategy_name}')
+    if not is_unit_testing():
+        strategy_class = locate(f'strategies.{strategy_name}.{strategy_name}')
+        if strategy_class is None:
+            # Try to find any class that inherits from Strategy in the module
+            module = locate(f'strategies.{strategy_name}')
+            if module:
+                strategy_file = os.path.join('strategies', strategy_name, '__init__.py')
+                if os.path.exists(strategy_file):
+                    with open(strategy_file, 'r') as f:
+                        content = f.read()
+                    
+                    # Find the class definition
+                    class_pattern = r'class\s+(\w+)'
+                    match = re.search(class_pattern, content)
+                    if match:
+                        old_class_name = match.group(1)
+                        if old_class_name != strategy_name:
+                            # Replace the class name in the file
+                            new_content = re.sub(f'class {old_class_name}', f'class {strategy_name}', content)
+                            with open(strategy_file, 'w') as f:
+                                f.write(new_content)
+                            
+                            # Reload the module to get the updated class
+                            import importlib
+                            module_path = f'strategies.{strategy_name}'
+                            if module_path in sys.modules:
+                                del sys.modules[module_path]
+                            strategy_class = locate(f'strategies.{strategy_name}.{strategy_name}')
+                            return strategy_class
+
+                for attr_name in dir(module):
+                    attr = getattr(module, attr_name)
+                    if isinstance(attr, type) and attr.__module__ == f'strategies.{strategy_name}':
+                        # Create a new class with the correct name as fallback
+                        strategy_class = type(strategy_name, (attr,), {})
+                        break
+        return strategy_class
+
+    path = sys.path[0]
+    # live plugin
+    if path.endswith('jesse-live'):
+        strategy_dir = f'tests.strategies.{strategy_name}.{strategy_name}'
+    # main framework
     else:
-        return locate(f'strategies.{strategy_name}.{strategy_name}')
+        strategy_dir = f'jesse.strategies.{strategy_name}.{strategy_name}'
+
+    return locate(strategy_dir)
 
 
 def insecure_hash(msg: str) -> str:
@@ -293,14 +425,12 @@ def is_backtesting() -> bool:
     return config['app']['trading_mode'] == 'backtest'
 
 
-def is_collecting_data() -> bool:
-    from jesse.config import config
-    return config['app']['trading_mode'] == 'collect'
-
-
 def is_debuggable(debug_item) -> bool:
     from jesse.config import config
-    return is_debugging() and config['env']['logging'][debug_item]
+    try:
+        return is_debugging() and config['env']['logging'][debug_item]
+    except KeyError:
+        return True
 
 
 def is_debugging() -> bool:
@@ -310,18 +440,20 @@ def is_debugging() -> bool:
 
 def is_importing_candles() -> bool:
     from jesse.config import config
-    return config['app']['trading_mode'] == 'import-candles'
+    return config['app']['trading_mode'] == 'candles'
 
 
 def is_live() -> bool:
     return is_livetrading() or is_paper_trading()
 
 
+@lru_cache
 def is_livetrading() -> bool:
     from jesse.config import config
     return config['app']['trading_mode'] == 'livetrade'
 
 
+@lru_cache
 def is_optimizing() -> bool:
     from jesse.config import config
     return config['app']['trading_mode'] == 'optimize'
@@ -332,18 +464,26 @@ def is_paper_trading() -> bool:
     return config['app']['trading_mode'] == 'papertrade'
 
 
-def is_test_driving() -> bool:
-    from jesse.config import config
-    return config['app']['is_test_driving']
-
-
 def is_unit_testing() -> bool:
-    from jesse.config import config
-    # config['app']['is_unit_testing'] is only set in the live plugin unit tests
-    return "pytest" in sys.modules or config['app']['is_unit_testing']
+    """Returns True if the code is running by running pytest or PyCharm's test runner, False otherwise."""
+    # Check if the PYTEST_CURRENT_TEST environment variable is set.
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return True
+
+    # Check if the code is being executed from the pytest command-line tool.
+    script_name = os.path.basename(sys.argv[0])
+    if script_name in ["pytest", "py.test"]:
+        return True
+
+    # Check if the code is being executed from PyCharm's test runner.
+    if os.environ.get("PYCHARM_HOSTED"):
+        return True
+
+    # Otherwise, the code is not running by running pytest or PyCharm's test runner.
+    return False
 
 
-def is_valid_uuid(uuid_to_test, version: int = 4) -> bool:
+def is_valid_uuid(uuid_to_test: str, version: int = 4) -> bool:
     try:
         uuid_obj = uuid.UUID(uuid_to_test, version=version)
     except ValueError:
@@ -361,10 +501,6 @@ def key(exchange: str, symbol: str, timeframe: str = None):
 def max_timeframe(timeframes_list: list) -> str:
     from jesse.enums import timeframes
 
-    if timeframes.WEEK_1 in timeframes_list:
-        return timeframes.WEEK_1
-    if timeframes.DAY_3 in timeframes_list:
-        return timeframes.DAY_3
     if timeframes.DAY_1 in timeframes_list:
         return timeframes.DAY_1
     if timeframes.HOUR_12 in timeframes_list:
@@ -402,19 +538,28 @@ def normalize(x: float, x_min: float, x_max: float) -> float:
     return (x - x_min) / (x_max - x_min)
 
 
-def now() -> int:
+def now(force_fresh=False) -> int:
     """
     Always returns the current time in milliseconds but rounds time in matter of seconds
     """
-    return now_to_timestamp()
+    return int(now_to_timestamp(force_fresh))
 
 
-def now_to_timestamp() -> int:
-    if not (is_live() or is_collecting_data() or is_importing_candles()):
+def now_to_timestamp(force_fresh=False) -> int:
+    if not force_fresh and (not (is_live() or is_importing_candles())):
         from jesse.store import store
         return store.app.time
 
     return arrow.utcnow().int_timestamp * 1000
+
+
+# for use with peewee
+def now_to_datetime():
+    return arrow.utcnow().datetime
+
+
+def current_1m_candle_timestamp():
+    return arrow.utcnow().floor('minute').int_timestamp * 1000
 
 
 def np_ffill(arr: np.ndarray, axis: int = 0) -> np.ndarray:
@@ -450,6 +595,7 @@ def np_shift(arr: np.ndarray, num: int, fill_value=0) -> np.ndarray:
     return result
 
 
+@lru_cache
 def opposite_side(s: str) -> str:
     from jesse.enums import sides
 
@@ -461,6 +607,7 @@ def opposite_side(s: str) -> str:
         raise ValueError(f'{s} is not a valid input for side')
 
 
+@lru_cache
 def opposite_type(t: str) -> str:
     from jesse.enums import trade_types
 
@@ -520,12 +667,14 @@ def prepare_qty(qty: float, side: str) -> float:
         return -abs(qty)
     elif side.lower() in ('buy', 'long'):
         return abs(qty)
+    elif side.lower() == 'close':
+        return 0.0
     else:
         raise ValueError(f'{side} is not a valid input')
 
 
-def python_version() -> float:
-    return float(f'{sys.version_info[0]}.{sys.version_info[1]}')
+def python_version() -> tuple:
+    return sys.version_info[:2]
 
 
 def quote_asset(symbol: str) -> str:
@@ -537,7 +686,7 @@ def quote_asset(symbol: str) -> str:
 
 
 def random_str(num_characters: int = 8) -> str:
-    return ''.join(random.choice(string.ascii_letters) for i in range(num_characters))
+    return ''.join(random.choice(string.ascii_letters) for _ in range(num_characters))
 
 
 def readable_duration(seconds: int, granularity: int = 2) -> str:
@@ -566,6 +715,15 @@ def relative_to_absolute(path: str) -> str:
     return os.path.abspath(path)
 
 
+def round_or_none(x: Union[float, None], digits: int = 0) -> Optional[float]:
+    """
+    Rounds a number to a certain number of digits or returns None if the number is None
+    """
+    if x is None:
+        return None
+    return round(x, digits)
+
+
 def round_price_for_live_mode(price, precision: int) -> Union[float, np.ndarray]:
     """
     Rounds price(s) based on exchange requirements
@@ -585,29 +743,43 @@ def round_qty_for_live_mode(roundable_qty: float, precision: int) -> Union[float
     :param precision: int
     :return: float | nd.array
     """
+    input_type = type(roundable_qty)
+    # if roundable_qty is a scalar, convert to nd.array
+    if not isinstance(roundable_qty, np.ndarray):
+        roundable_qty = np.array([roundable_qty])
+
     # for qty rounding down is important to prevent InsufficenMargin
     rounded = round_decimals_down(roundable_qty, precision)
 
     for index, q in enumerate(rounded):
+        # if the rounded value is 0, make it the minimum possible value
         if q == 0.0:
-            rounded[index] = 1 / 10 ** precision
+            # if the precision is bigger or equal 0, (for numbers like 2, 0.2, 0.02)
+            if precision >= 0:
+                rounded[index] = 1 / 10 ** precision
+            else:  # for numbers like 20, 200, 2000
+                raise ValueError('qty is too small')
 
+    if input_type in [float, np.float64]:
+        return float(rounded[0])
     return rounded
 
 
-def round_decimals_down(number: np.ndarray, decimals: int = 2) -> float:
+def round_decimals_down(number: Union[np.ndarray, float], decimals: int = 2) -> float:
     """
     Returns a value rounded down to a specific number of decimal places.
     """
     if not isinstance(decimals, int):
-      raise TypeError("decimal places must be an integer")
-    elif decimals < 0:
-      raise ValueError("decimal places has to be 0 or more")
+        raise TypeError("decimal places must be an integer")
     elif decimals == 0:
-      return np.floor(number)
-
-    factor = 10 ** decimals
-    return np.floor(number * factor) / factor
+        return np.floor(number)
+    elif decimals > 0:
+        factor = 10 ** decimals
+        return np.floor(number * factor) / factor
+    elif decimals < 0:
+        # for example, for decimals = -2, we want to round down to the nearest 100 if the number is 1234, we want to return 1200:
+        factor = 10 ** (decimals * -1)
+        return np.floor(number / factor) * factor
 
 
 def same_length(bigger: np.ndarray, shorter: np.ndarray) -> np.ndarray:
@@ -622,8 +794,12 @@ def should_execute_silently() -> bool:
     return is_optimizing() or is_unit_testing()
 
 
+@lru_cache
 def side_to_type(s: str) -> str:
     from jesse.enums import trade_types, sides
+
+    # make sure string is lowercase
+    s = s.lower()
 
     if s == sides.BUY:
         return trade_types.LONG
@@ -632,9 +808,9 @@ def side_to_type(s: str) -> str:
     raise ValueError
 
 
-def string_after_character(string: str, character: str) -> str:
+def string_after_character(s: str, character: str) -> str:
     try:
-        return string.split(character, 1)[1]
+        return s.split(character, 1)[1]
     except IndexError:
         return None
 
@@ -661,8 +837,8 @@ def style(msg_text: str, msg_style: str) -> str:
 
 def terminate_app() -> None:
     # close the database
-    from jesse.services.db import close_connection
-    close_connection()
+    from jesse.services.db import database
+    database.close_connection()
     # disconnect python from the OS
     os._exit(1)
 
@@ -673,44 +849,16 @@ def error(msg: str, force_print: bool = False) -> None:
         from jesse.services import logger
         logger.error(msg)
         if force_print:
-            print('\n')
-            print(color('========== critical error =========='.upper(), 'red'))
-            print(color(msg, 'red'))
+            _print_error(msg)
     else:
-        print('\n')
-        print(color('========== critical error =========='.upper(), 'red'))
-        print(color(msg, 'red'))
+        _print_error(msg)
 
 
-def timeframe_to_one_minutes(timeframe: str) -> int:
-    from jesse.enums import timeframes
-    from jesse.exceptions import InvalidTimeframe
-
-    dic = {
-        timeframes.MINUTE_1: 1,
-        timeframes.MINUTE_3: 3,
-        timeframes.MINUTE_5: 5,
-        timeframes.MINUTE_15: 15,
-        timeframes.MINUTE_30: 30,
-        timeframes.MINUTE_45: 45,
-        timeframes.HOUR_1: 60,
-        timeframes.HOUR_2: 60 * 2,
-        timeframes.HOUR_3: 60 * 3,
-        timeframes.HOUR_4: 60 * 4,
-        timeframes.HOUR_6: 60 * 6,
-        timeframes.HOUR_8: 60 * 8,
-        timeframes.HOUR_12: 60 * 12,
-        timeframes.DAY_1: 60 * 24,
-        timeframes.DAY_3: 60 * 24 * 3,
-        timeframes.WEEK_1: 60 * 24 * 7,
-    }
-
-    try:
-        return dic[timeframe]
-    except KeyError:
-        all_timeframes = [timeframe for timeframe in class_iter(timeframes)]
-        raise InvalidTimeframe(
-            f'Timeframe "{timeframe}" is invalid. Supported timeframes are {", ".join(all_timeframes)}.')
+def _print_error(msg: str) -> None:
+    print('\n')
+    print(color('========== critical error =========='.upper(), 'red'))
+    print(color(msg, 'red'))
+    print(color('====================================', 'red'))
 
 
 def timestamp_to_arrow(timestamp: int) -> arrow.arrow.Arrow:
@@ -725,6 +873,16 @@ def timestamp_to_time(timestamp: int) -> str:
     return str(arrow.get(timestamp / 1000))
 
 
+def timestamp_to_iso8601(timestamp: int) -> str:
+    # example: 1609804800000 => '2021-01-05T00:00:00.000Z'
+    return arrow.get(timestamp / 1000).isoformat()
+
+
+def iso8601_to_timestamp(iso8601: str) -> int:
+    # example: '2021-01-05T00:00:00.000Z' -> 1609740800000
+    return int(arrow.get(iso8601, 'YYYY-MM-DDTHH:mm:ss.SSSZ').datetime.timestamp()) * 1000
+
+
 def today_to_timestamp() -> int:
     """
     returns today's (beginning) timestamp
@@ -734,6 +892,7 @@ def today_to_timestamp() -> int:
     return arrow.utcnow().floor('day').int_timestamp * 1000
 
 
+@lru_cache
 def type_to_side(t: str) -> str:
     from jesse.enums import trade_types, sides
 
@@ -741,7 +900,7 @@ def type_to_side(t: str) -> str:
         return sides.BUY
     if t == trade_types.SHORT:
         return sides.SELL
-    raise ValueError
+    raise ValueError(f'unsupported type: "{t}". Only "long" and "short" are supported.')
 
 
 def unique_list(arr) -> list:
@@ -762,3 +921,240 @@ def closing_side(position_type: str) -> str:
         return 'buy'
     else:
         raise ValueError(f'Value entered for position_type ({position_type}) is not valid')
+
+
+def merge_dicts(d1: dict, d2: dict) -> dict:
+    """
+    Merges nested dictionaries
+
+    :param d1: dict
+    :param d2: dict
+    :return: dict
+    """
+
+    def inner(dict1, dict2):
+        for k in set(dict1.keys()).union(dict2.keys()):
+            if k in dict1 and k in dict2:
+                if isinstance(dict1[k], dict) and isinstance(dict2[k], dict):
+                    yield k, dict(merge_dicts(dict1[k], dict2[k]))
+                else:
+                    yield k, dict2[k]
+            elif k in dict1:
+                yield k, dict1[k]
+            else:
+                yield k, dict2[k]
+
+    return dict(inner(d1, d2))
+
+
+def computer_name():
+    import platform
+    return platform.node()
+
+
+def validate_response(response):
+    if response.status_code != 200:
+        err_msg = f"[{response.status_code}]: {response.json()['message']}\nPlease contact us at support@jesse.trade if this is unexpected."
+
+        if response.status_code not in [401, 403]:
+            raise ConnectionError(err_msg)
+        error(err_msg, force_print=True)
+        terminate_app()
+
+
+def get_session_id():
+    from jesse.store import store
+    if store.app.session_id == '':
+        store.app.session_id = generate_unique_id()
+    return store.app.session_id
+
+
+def get_pid():
+    return os.getpid()
+
+
+def is_jesse_project():
+    ls = os.listdir('.')
+    return 'strategies' in ls and 'storage' in ls
+
+
+def dd(item):
+    """
+    Dump and Die but pretty: used for debugging when developing Jesse
+    """
+    dump(item)
+    terminate_app()
+
+
+def dump(*item):
+    """
+    Dump object in pretty format: used for debugging when developing Jesse
+    """
+    if len(item) == 1:
+        item = item[0]
+
+    print(
+        color('\n========= Debugging Value =========='.upper(), 'yellow')
+    )
+
+    pprint(item)
+
+    print(
+        color('====================================\n', 'yellow')
+    )
+
+
+def debug(*item):
+    """
+    Used for debugging when developing Jesse. Prints the item in pretty format in both
+    the terminal and the log file.
+    """
+    if len(item) == 1:
+        dump(f"==> {item[0]}")
+    else:
+        dump(f"==> {', '.join(str(x) for x in item)}")
+    from jesse.services import logger
+    if len(item) == 1:
+        logger.info(f"==> {item[0]}")
+    else:
+        logger.info(f"==> {', '.join(str(x) for x in item)}")
+
+
+def float_or_none(item):
+    """
+    Return the float of the value if it's not None
+    """
+    if item is None or item == '':
+        return None
+    else:
+        return float(item)
+
+
+def str_or_none(item, encoding='utf-8'):
+    """
+    Return the str of the value if it's not None
+    """
+    if item is None:
+        return None
+    else:
+        # return item if it's str, if not, decode it using encoding
+        if isinstance(item, str):
+            return item
+
+        if type(item) == np.float64:
+            return str(item)
+
+        try:
+            return str(item, encoding)
+        except TypeError:
+            return str(item)
+
+
+def cpu_cores_count():
+    from multiprocessing import cpu_count
+    return cpu_count()
+
+
+# a function that converts name to env_name. Example: 'Testnet Binance Futures' into 'TESTNET_BINANCE_FUTURES'
+def convert_to_env_name(name: str) -> str:
+    return name.replace(' ', '_').upper()
+
+
+def is_notebook():
+    try:
+        shell = get_ipython().__class__.__name__
+        # Jupyter notebook or qtconsole
+        if shell == 'ZMQInteractiveShell':
+            return True
+        elif shell == 'TerminalInteractiveShell':
+            # Terminal running IPython
+            return False
+        else:
+            # Other type (?)
+            return False
+    except NameError:
+        # Probably standard Python interpreter
+        return False
+
+
+def get_os() -> str:
+    import platform
+    if platform.system() == 'Darwin':
+        return 'mac'
+    elif platform.system() == 'Linux':
+        return 'linux'
+    elif platform.system() == 'Windows':
+        return 'windows'
+    else:
+        raise NotImplementedError(f'Unsupported OS: "{platform.system()}"')
+
+
+# a function that returns boolean whether or not the code is being executed inside a docker container
+def is_docker() -> bool:
+    import os
+    return os.path.exists('/.dockerenv')
+
+
+def clear_output():
+    if is_notebook():
+        from IPython.display import clear_output
+        clear_output(wait=True)
+    else:
+        click.clear()
+
+
+def get_class_name(cls):
+    # if it's a string, return it
+    if isinstance(cls, str):
+        return cls
+    # else, return the class name
+    return cls.__name__
+
+
+def next_candle_timestamp(candle: np.ndarray, timeframe: str) -> int:
+    return candle[0] + timeframe_to_one_minutes(timeframe) * 60_000
+
+
+def get_candle_start_timestamp_based_on_timeframe(timeframe: str, num_candles_to_fetch: int) -> int:
+    one_min_count = timeframe_to_one_minutes(timeframe)
+    finish_date = now(force_fresh=True)
+    return finish_date - (num_candles_to_fetch * one_min_count * 60_000)
+
+
+def is_price_near(order_price, price_to_compare, percentage_threshold=0.00015):
+    """
+    Check if the given order price is near the specified price.
+    Default percentage_threshold is 0.015% (0.00015)
+    We calculate percentage difference between the two prices rounded to 4 decimal places, 
+    so low-priced orders can be properly compared within 0.015% range.
+    """
+    return abs(1 - (order_price / price_to_compare)) <= percentage_threshold
+
+
+def gzip_compress(data):
+    """Compress data using gzip."""
+    json_data = json.dumps(data).encode('utf-8')
+    # Compress the JSON string
+    return gzip.compress(json_data)
+
+
+def timeframe_to_one_minutes(timeframe: str) -> int:
+    from jesse.utils import timeframe_to_one_minutes
+    return timeframe_to_one_minutes(timeframe)
+
+
+def compressed_response(content: str) -> dict:
+    """
+    Helper function to handle compression for HTTP responses. 
+    Returns a dict with compression info and content.
+    
+    :param content: string content to potentially compress
+    :return: dict with is_compressed flag and content
+    """
+    # check if content is large enough to warrant compression
+    compressed = gzip_compress(content)
+    # encode as base64 string for safe transmission
+    return {
+        'is_compressed': True,
+        'data': base64.b64encode(compressed).decode('utf-8')
+    }

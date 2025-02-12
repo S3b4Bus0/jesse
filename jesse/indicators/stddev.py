@@ -1,10 +1,8 @@
 from typing import Union
 
 import numpy as np
-import talib
 
-from jesse.helpers import get_candle_source
-from jesse.helpers import slice_candles
+from jesse.helpers import get_candle_source, slice_candles
 
 
 def stddev(candles: np.ndarray, period: int = 5, nbdev: float = 1, source_type: str = "close",
@@ -20,9 +18,26 @@ def stddev(candles: np.ndarray, period: int = 5, nbdev: float = 1, source_type: 
 
     :return: float | np.ndarray
     """
-    candles = slice_candles(candles, sequential)
+    if len(candles.shape) == 1:
+        source = candles
+    else:
+        candles = slice_candles(candles, sequential)
+        source = get_candle_source(candles, source_type=source_type)
 
-    source = get_candle_source(candles, source_type=source_type)
-    res = talib.STDDEV(source, timeperiod=period, nbdev=nbdev)
+    n = len(source)
+    # Initialize result array with nan values
+    result = np.full(n, np.nan, dtype=float)
 
-    return res if sequential else res[-1]
+    if n < period:
+        # Not enough data for full period, result remains as nans
+        output = result
+    else:
+        # Create rolling windows using numpy's sliding_window_view
+        windows = np.lib.stride_tricks.sliding_window_view(source, window_shape=period)
+        # Compute standard deviation over the rolling windows using population std (ddof=0) and multiply by nbdev
+        rolling_std = np.std(windows, axis=1, ddof=0) * nbdev
+        # Fill the result array from index 'period - 1' onward with the computed rolling std
+        result[period - 1:] = rolling_std
+        output = result
+
+    return output if sequential else output[-1]

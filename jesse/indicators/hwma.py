@@ -1,12 +1,9 @@
 from typing import Union
 
 import numpy as np
-try:
-    from numba import njit
-except ImportError:
-    njit = lambda a : a
+from numba import njit
 
-from jesse.helpers import get_candle_source, slice_candles
+from jesse.helpers import get_candle_source, same_length, slice_candles
 
 
 def hwma(candles: np.ndarray, na: float = 0.2, nb: float = 0.1, nc: float = 0.1, source_type: str = "close", sequential: bool = False) -> Union[
@@ -33,12 +30,14 @@ def hwma(candles: np.ndarray, na: float = 0.2, nb: float = 0.1, nc: float = 0.1,
         candles = slice_candles(candles, sequential)
         source = get_candle_source(candles, source_type=source_type)
 
-    res = hwma_fast(source, na, nb, nc)
+    source_without_nan = source[~np.isnan(source)]
+    res = hwma_fast(source_without_nan, na, nb, nc)
+    res = same_length(candles, res)
 
     return res if sequential else res[-1]
 
 
-@njit
+@njit(cache=True)
 def hwma_fast(source, na, nb, nc):
     last_a = last_v = 0
     last_f = source[0]

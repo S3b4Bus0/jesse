@@ -1,12 +1,8 @@
 from collections import namedtuple
 
 import numpy as np
-import talib
-try:
-    from numba import njit
-except ImportError:
-    njit = lambda a : a
-
+from numba import njit
+from jesse.indicators.sma import sma
 from jesse.helpers import slice_candles
 
 EMD = namedtuple('EMD', ['upperband', 'middleband', 'lowerband'])
@@ -30,11 +26,11 @@ def emd(candles: np.ndarray, period: int = 20, delta=0.5, fraction=0.1, sequenti
 
     bp = bp_fast(price, period, delta)
 
-    mean = talib.SMA(bp, timeperiod=2 * period)
+    mean = sma(bp, 2 * period, sequential=True)
     peak, valley = peak_valley_fast(bp, price)
 
-    avg_peak = fraction * talib.SMA(peak, timeperiod=50)
-    avg_valley = fraction * talib.SMA(valley, timeperiod=50)
+    avg_peak = fraction * sma(peak, 50, sequential=True)
+    avg_valley = fraction * sma(valley, 50, sequential=True)
 
     if sequential:
         return EMD(avg_peak, mean, avg_valley)
@@ -42,7 +38,7 @@ def emd(candles: np.ndarray, period: int = 20, delta=0.5, fraction=0.1, sequenti
         return EMD(avg_peak[-1], mean[-1], avg_valley[-1])
 
 
-@njit
+@njit(cache=True)
 def bp_fast(price, period, delta):
     # bandpass filter
     beta = np.cos(2 * np.pi / period)
@@ -58,7 +54,7 @@ def bp_fast(price, period, delta):
     return bp
 
 
-@njit
+@njit(cache=True)
 def peak_valley_fast(bp, price):
     peak = np.copy(bp)
     valley = np.copy(bp)

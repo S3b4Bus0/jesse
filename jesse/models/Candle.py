@@ -1,7 +1,9 @@
 import peewee
+from jesse.services.db import database
 
-import jesse.helpers as jh
-from jesse.services.db import db
+
+if database.is_closed():
+    database.open_connection()
 
 
 class Candle(peewee.Model):
@@ -12,28 +14,31 @@ class Candle(peewee.Model):
     high = peewee.FloatField()
     low = peewee.FloatField()
     volume = peewee.FloatField()
-    symbol = peewee.CharField()
     exchange = peewee.CharField()
+    symbol = peewee.CharField()
+    timeframe = peewee.CharField()
 
     # partial candles: 5 * 1m candle = 5m candle while 1m == partial candle
     is_partial = True
 
     class Meta:
-        database = db
+        from jesse.services.db import database
+
+        database = database.db
         indexes = (
-            (('timestamp', 'exchange', 'symbol'), True),
+            (('exchange', 'symbol', 'timeframe', 'timestamp'), True),
         )
 
-    def __init__(self, attributes=None, **kwargs) -> None:
+    def __init__(self, attributes: dict = None, **kwargs) -> None:
         peewee.Model.__init__(self, attributes=attributes, **kwargs)
 
         if attributes is None:
             attributes = {}
 
-        for a in attributes:
-            setattr(self, a, attributes[a])
+        for a, value in attributes.items():
+            setattr(self, a, value)
 
 
-if not jh.is_unit_testing():
-    # create the table
+# if database is open, create the table
+if database.is_open():
     Candle.create_table()

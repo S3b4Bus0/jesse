@@ -3,6 +3,7 @@ from typing import Union
 import numpy as np
 
 from jesse.helpers import get_candle_source, slice_candles
+
 from .high_pass_2_pole import high_pass_2_pole_fast
 from .supersmoother import supersmoother_fast
 
@@ -13,7 +14,8 @@ def roofing(candles: np.ndarray, hp_period: int = 48, lp_period: int = 10, sourc
     Roofing Filter indicator by John F. Ehlers
 
     :param candles: np.ndarray
-    :param period: int - default: 20
+    :param hp_period: int - default: 48
+    :param lp_period: int - default: 10
     :param source_type: str - default: "close"
     :param sequential: bool - default: False
 

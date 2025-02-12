@@ -1,22 +1,18 @@
 from typing import Union
-import talib
+
 import numpy as np
+from numba import njit
 
-try:
-    from numba import njit
-except ImportError:
-    njit = lambda a : a
-
-from jesse.helpers import get_candle_source, slice_candles, same_length, np_shift
+from jesse.helpers import (get_candle_source, np_shift, same_length,
+                           slice_candles)
 
 
-def maaq(candles: np.ndarray, period: int = 11, fast_period: int = 2, slow_period: int = 30, source_type: str = "close", sequential: bool = False) -> Union[
-    float, np.ndarray]:
+def maaq(candles: np.ndarray, period: int = 11, fast_period: int = 2, slow_period: int = 30, source_type: str = "close", sequential: bool = False) -> Union[float, np.ndarray]:
     """
     Moving Average Adaptive Q
 
     :param candles: np.ndarray
-    :param period: int - default: 14
+    :param period: int - default: 11
     :param fast_period: int - default: 2
     :param slow_period: int - default: 30
     :param source_type: str - default: "close"
@@ -32,23 +28,26 @@ def maaq(candles: np.ndarray, period: int = 11, fast_period: int = 2, slow_perio
         candles = slice_candles(candles, sequential)
         source = get_candle_source(candles, source_type=source_type)
 
+    source = source[~np.isnan(source)]
+
     diff = np.abs(source - np_shift(source, 1, np.nan))
     signal = np.abs(source - np_shift(source, period, np.nan))
-    noise = talib.SUM(diff, period)
+    noise = np.concatenate((np.full(period - 1, np.nan, dtype=source.dtype), np.convolve(diff, np.ones(period, dtype=source.dtype), mode='valid')))
 
-    with np.errstate(divide='ignore'):
-        ratio = np.where(noise == 0, 0, signal / noise)
+    # Safely divide signal by noise
+    ratio = np.divide(signal, noise, out=np.zeros_like(signal), where=(noise != 0))
 
     fastSc = 2 / (fast_period + 1)
     slowSc = 2 / (slow_period + 1)
     temp = np.power((ratio * fastSc) + slowSc, 2)
 
     res = maaq_fast(source, temp, period)
+    res = same_length(candles, res)
 
     return res if sequential else res[-1]
 
 
-@njit
+@njit(cache=True)
 def maaq_fast(source, temp, period):
     newseries = np.copy(source)
     for i in range(period, source.shape[0]):

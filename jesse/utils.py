@@ -7,6 +7,7 @@ import pandas as pd
 
 import jesse.helpers as jh
 from jesse.enums import timeframes
+import statsmodels.api as sm
 
 
 def anchor_timeframe(timeframe: str) -> str:
@@ -32,8 +33,6 @@ def anchor_timeframe(timeframe: str) -> str:
         timeframes.HOUR_6: timeframes.DAY_1,
         timeframes.HOUR_8: timeframes.DAY_1,
         timeframes.HOUR_12: timeframes.DAY_1,
-        timeframes.DAY_1: timeframes.WEEK_1,
-        timeframes.DAY_3: timeframes.WEEK_1,
     }
 
     return dic[timeframe]
@@ -42,11 +41,12 @@ def anchor_timeframe(timeframe: str) -> str:
 def crossed(series1: np.ndarray, series2: Union[float, int, np.ndarray], direction: str = None,
             sequential: bool = False) -> bool:
     """
-    Helper for detecion of crosses
+    Helper for detection of crosses
 
     :param series1: np.ndarray
     :param series2: float, int, np.array
     :param direction: str - default: None - above or below
+    :param sequential: bool - default: False
 
     :return: bool
     """
@@ -151,6 +151,7 @@ def risk_to_qty(capital: float, risk_per_capital: float, entry_price: float, sto
     :param risk_per_capital:
     :param entry_price:
     :param stop_loss_price:
+    :param precision:
     :param fee_rate:
     :return: float
     """
@@ -192,8 +193,12 @@ def size_to_qty(position_size: float, entry_price: float, precision: int = 3, fe
     :param fee_rate:
     :return: float
     """
+    # make sure entry_price is not None
+    if entry_price is None:
+        raise TypeError(f"entry_price is None")
+
     if math.isnan(position_size) or math.isnan(entry_price):
-        raise TypeError()
+        raise TypeError(f"position_size: {position_size}, entry_price: {entry_price}")
 
     if fee_rate != 0:
         position_size *= 1 - fee_rate * 3
@@ -298,14 +303,6 @@ def dd(msg: str) -> None:
     jh.terminate_app()
 
 
-def candlestick_chart(candles: np.ndarray):
-    """
-    Displays a candlestick chart from the numpy array
-    """
-    import mplfinance as mpf
-    df = numpy_candles_to_dataframe(candles)
-    mpf.plot(df, type='candle')
-
 def combinations_without_repeat(a: np.ndarray, n: int = 2) -> np.ndarray:
     """
     Creates an array containing all combinations of the passed arrays individual values without repetitions. Useful for the optimization mode.
@@ -314,3 +311,55 @@ def combinations_without_repeat(a: np.ndarray, n: int = 2) -> np.ndarray:
     if n <= 1:
         raise ValueError("n must be >= 2")
     return np.array(list(permutations(a, n)))
+
+
+def calculate_alpha_beta(returns1: np.ndarray, returns2: np.ndarray) -> tuple:
+    # Add a constant to the independent variable (returns2)
+    X = sm.add_constant(returns2)  # Independent variable
+    model = sm.OLS(returns1, X).fit()  # Fit the model
+    alpha = model.params[0]  # Intercept (alpha)
+    beta = model.params[1]  # Slope (beta)
+    return alpha, beta
+
+
+def timeframe_to_one_minutes(timeframe: str) -> int:
+    """
+    Converts a given timeframe to its equivalent in minutes.
+
+    :param timeframe: str - The timeframe to convert. Supported timeframes include:
+        - '1m', '3m', '5m', '15m', '30m', '45m', '1h', '2h', '3h', '4h', '6h', '8h', '12h', 
+          '1d', '3d', '1w', '1M'.
+    :return: int - The equivalent number of minutes for the given timeframe.
+
+    :raises InvalidTimeframe: If the provided timeframe is not supported.
+    """
+    from jesse.enums import timeframes
+    from jesse.exceptions import InvalidTimeframe
+
+    dic = {
+        timeframes.MINUTE_1: 1,
+        timeframes.MINUTE_3: 3,
+        timeframes.MINUTE_5: 5,
+        timeframes.MINUTE_15: 15,
+        timeframes.MINUTE_30: 30,
+        timeframes.MINUTE_45: 45,
+        timeframes.HOUR_1: 60,
+        timeframes.HOUR_2: 60 * 2,
+        timeframes.HOUR_3: 60 * 3,
+        timeframes.HOUR_4: 60 * 4,
+        timeframes.HOUR_6: 60 * 6,
+        timeframes.HOUR_8: 60 * 8,
+        timeframes.HOUR_12: 60 * 12,
+        timeframes.DAY_1: 60 * 24,
+        timeframes.DAY_3: 60 * 24 * 3,
+        timeframes.WEEK_1: 60 * 24 * 7,
+        timeframes.MONTH_1: 60 * 24 * 30,
+    }
+
+    try:
+        return dic[timeframe]
+    except KeyError:
+        all_timeframes = [timeframe for timeframe in jh.class_iter(timeframes)]
+        raise InvalidTimeframe(
+            f'Timeframe "{timeframe}" is invalid. Supported timeframes are {", ".join(all_timeframes)}.'
+        )

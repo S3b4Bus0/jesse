@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import arrow
 import numpy as np
 
@@ -50,9 +52,10 @@ def load_required_candles(exchange: str, symbol: str, start_date_str: str, finis
                 Candle.timestamp, Candle.open, Candle.close, Candle.high, Candle.low,
                 Candle.volume
             ).where(
-                Candle.timestamp.between(pre_start_date, pre_finish_date),
                 Candle.exchange == exchange,
-                Candle.symbol == symbol
+                Candle.symbol == symbol,
+                Candle.timeframe == '1m' or Candle.timeframe.is_null(),
+                Candle.timestamp.between(pre_start_date, pre_finish_date)
             ).order_by(Candle.timestamp.asc()).tuples()
         )
 
@@ -65,13 +68,14 @@ def load_required_candles(exchange: str, symbol: str, start_date_str: str, finis
         first_existing_candle = tuple(
             Candle.select(Candle.timestamp).where(
                 Candle.exchange == exchange,
-                Candle.symbol == symbol
+                Candle.symbol == symbol,
+                Candle.timeframe == '1m' or Candle.timeframe.is_null()
             ).order_by(Candle.timestamp.asc()).limit(1).tuples()
         )
 
         if not len(first_existing_candle):
             raise CandleNotFoundInDatabase(
-                f'No candle for {exchange} {symbol} is present in the database. Try importing candles.'
+                f'No candle for "{exchange}" "{symbol}" is present in the database. Try importing candles.'
             )
 
         first_existing_candle = first_existing_candle[0][0]
@@ -79,11 +83,13 @@ def load_required_candles(exchange: str, symbol: str, start_date_str: str, finis
         last_existing_candle = tuple(
             Candle.select(Candle.timestamp).where(
                 Candle.exchange == exchange,
-                Candle.symbol == symbol
+                Candle.symbol == symbol,
+                Candle.timeframe == '1m' or Candle.timeframe.is_null()
             ).order_by(Candle.timestamp.desc()).limit(1).tuples()
         )[0][0]
 
         first_backtestable_timestamp = first_existing_candle + (pre_finish_date - pre_start_date) + (60_000 * 1440)
+        first_backtestable_datetime = datetime.fromtimestamp(first_backtestable_timestamp/1000)
 
         # if first backtestable timestamp is in the future, that means we have some but not enough candles
         if first_backtestable_timestamp > jh.today_to_timestamp():
@@ -93,9 +99,10 @@ def load_required_candles(exchange: str, symbol: str, start_date_str: str, finis
             )
 
         raise CandleNotFoundInDatabase(
-            f'Not enough candles for {exchange} {symbol} exists to run backtest from {start_date_str} => {finish_date_str}. \n'
-            f'First available date is {jh.timestamp_to_date(first_backtestable_timestamp)}\n'
-            f'Last available date is {jh.timestamp_to_date(last_existing_candle)}'
+            f'Not enough candles for {exchange} {symbol} exists to run backtest from {start_date_str} => {finish_date_str} '
+            f'(first possible date is {first_backtestable_datetime.date()}). \n'
+
+            f'Are you considering the warmup candles? For more info please read:\n https://jesse.trade/help/faq/i-imported-candles-but-keep-getting-not-enough-candles'
         )
 
     return candles

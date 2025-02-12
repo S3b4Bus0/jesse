@@ -1,7 +1,9 @@
 import peewee
+from jesse.services.db import database
 
-import jesse.helpers as jh
-from jesse.services.db import db
+
+if database.is_closed():
+    database.open_connection()
 
 
 class DailyBalance(peewee.Model):
@@ -13,22 +15,24 @@ class DailyBalance(peewee.Model):
     balance = peewee.FloatField()
 
     class Meta:
-        database = db
+        from jesse.services.db import database
+
+        database = database.db
         indexes = (
-            (('identifier', 'exchange', 'timestamp', 'asset'), True),
+            (('identifier', 'exchange', 'asset', 'timestamp'), True),
             (('identifier', 'exchange'), False),
         )
 
-    def __init__(self, attributes=None, **kwargs) -> None:
+    def __init__(self, attributes: dict = None, **kwargs) -> None:
         peewee.Model.__init__(self, attributes=attributes, **kwargs)
 
         if attributes is None:
             attributes = {}
 
-        for a in attributes:
-            setattr(self, a, attributes[a])
+        for a, value in attributes.items():
+            setattr(self, a, value)
 
 
-if not jh.is_unit_testing():
-    # create the table
+# if database is open, create the table
+if database.is_open():
     DailyBalance.create_table()

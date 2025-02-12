@@ -96,7 +96,7 @@ def test_risk_to_qty():
     # short
     assert utils.risk_to_qty(10000, 1, 80, 100) == 5
 
-    # should not return more than maximum capital. Expect 100 instead of 125
+    # should not return more than maximum balance. Expect 100 instead of 125
     assert utils.risk_to_qty(10000, 5, 100, 96) == 100
 
     # when fee is included
@@ -148,28 +148,44 @@ def test_subtract_floats():
 def test_prices_to_returns():
     series = np.array([50, 10, 100, 25])
     pct = utils.prices_to_returns(series)
-    np.testing.assert_array_equal(pct, np.array([ np.nan, -80., 900., -75.]))
+    np.testing.assert_array_equal(pct, np.array([np.nan, -80., 900., -75.]))
+
 
 def test_combinations_without_repeat():
     a = np.array([4, 2, 9, 1, 3])
     b = utils.combinations_without_repeat(a)
     np.testing.assert_array_equal(b, np.array([[4, 2],
-       [4, 9],
-       [4, 1],
-       [4, 3],
-       [2, 4],
-       [2, 9],
-       [2, 1],
-       [2, 3],
-       [9, 4],
-       [9, 2],
-       [9, 1],
-       [9, 3],
-       [1, 4],
-       [1, 2],
-       [1, 9],
-       [1, 3],
-       [3, 4],
-       [3, 2],
-       [3, 9],
-       [3, 1]]))
+                                               [4, 9],
+                                               [4, 1],
+                                               [4, 3],
+                                               [2, 4],
+                                               [2, 9],
+                                               [2, 1],
+                                               [2, 3],
+                                               [9, 4],
+                                               [9, 2],
+                                               [9, 1],
+                                               [9, 3],
+                                               [1, 4],
+                                               [1, 2],
+                                               [1, 9],
+                                               [1, 3],
+                                               [3, 4],
+                                               [3, 2],
+                                               [3, 9],
+                                               [3, 1]]))
+
+
+def test_timeframe_to_one_minutes():
+    assert utils.timeframe_to_one_minutes("1m") == 1
+    assert utils.timeframe_to_one_minutes("3m") == 3
+    assert utils.timeframe_to_one_minutes("5m") == 5
+    assert utils.timeframe_to_one_minutes("15m") == 15
+    assert utils.timeframe_to_one_minutes("30m") == 30
+    assert utils.timeframe_to_one_minutes("1h") == 60
+    assert utils.timeframe_to_one_minutes("2h") == 60 * 2
+    assert utils.timeframe_to_one_minutes("3h") == 60 * 3
+    assert utils.timeframe_to_one_minutes("4h") == 60 * 4
+    assert utils.timeframe_to_one_minutes("6h") == 60 * 6
+    assert utils.timeframe_to_one_minutes("8h") == 60 * 8
+    assert utils.timeframe_to_one_minutes("1D") == 60 * 24

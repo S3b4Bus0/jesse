@@ -31,7 +31,9 @@ class SymbolNotFound(Exception):
 
 
 class RouteNotFound(Exception):
-    pass
+    def __init__(self, symbol, timeframe):
+        message = f"Data route is required but missing: symbol='{symbol}', timeframe='{timeframe}'"
+        super().__init__(message)
 
 
 class InvalidRoutes(Exception):
@@ -43,6 +45,14 @@ class ExchangeInMaintenance(Exception):
 
 
 class ExchangeNotResponding(Exception):
+    pass
+
+
+class ExchangeRejectedOrder(Exception):
+    pass
+
+
+class ExchangeOrderNotFound(Exception):
     pass
 
 
@@ -58,9 +68,37 @@ class InvalidTimeframe(Exception):
     pass
 
 
+class InvalidSymbol(Exception):
+    pass
+
+
 class NegativeBalance(Exception):
     pass
 
 
 class InsufficientMargin(Exception):
+    pass
+
+
+class InsufficientBalance(Exception):
+    pass
+
+
+class Termination(Exception):
+    pass
+
+
+class InvalidExchangeApiKeys(Exception):
+    pass
+
+
+class ExchangeError(Exception):
+    pass
+
+
+class NotSupportedError(Exception):
+    pass
+
+
+class CandlesNotFound(Exception):
     pass

@@ -1,11 +1,10 @@
 from typing import Union
 
 import numpy as np
-import talib
-from jesse.indicators.ma import ma
+from numpy.lib.stride_tricks import sliding_window_view
 
-from jesse.helpers import get_candle_source, same_length
-from jesse.helpers import slice_candles
+from jesse.helpers import get_candle_source, same_length, slice_candles
+from jesse.indicators.ma import ma
 from jesse.indicators.mean_ad import mean_ad
 from jesse.indicators.median_ad import median_ad
 
@@ -17,6 +16,7 @@ def rvi(candles: np.ndarray, period: int = 10, ma_len: int = 14, matype: int = 1
     :param period: int - default: 10
     :param ma_len: int - default: 14
     :param matype: int - default: 1
+    :param devtype: int - default: 0
     :param source_type: str - default: "close"
     :param sequential: bool - default: False
     :return: float | np.ndarray
@@ -26,7 +26,7 @@ def rvi(candles: np.ndarray, period: int = 10, ma_len: int = 14, matype: int = 1
     source = get_candle_source(candles, source_type=source_type)
 
     if devtype == 0:
-      dev = talib.STDDEV(source, period)
+      dev = _rolling_std(source, period)
     elif devtype == 1:
       dev = mean_ad(source, period, sequential=True)
     elif devtype == 2:
@@ -44,3 +44,11 @@ def rvi(candles: np.ndarray, period: int = 10, ma_len: int = 14, matype: int = 1
     result = 100 * (up_avg / (up_avg + down_avg))
 
     return result if sequential else result[-1]
+
+
+def _rolling_std(arr: np.ndarray, window: int) -> np.ndarray:
+    if len(arr) < window:
+        return np.full(len(arr), np.nan)
+    windows = sliding_window_view(arr, window_shape=window)
+    stds = np.std(windows, axis=1, ddof=0)
+    return np.concatenate((np.full(window - 1, np.nan), stds))

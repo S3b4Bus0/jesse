@@ -1,3 +1,5 @@
+import os
+
 import arrow
 import numpy as np
 import pytest
@@ -8,9 +10,8 @@ import jesse.helpers as jh
 def test_app_currency():
     from jesse.routes import router
     from jesse.enums import exchanges, timeframes
-    router.set_routes([
-        (exchanges.BITFINEX, 'ETH-USD', timeframes.HOUR_3, 'Test19'),
-    ])
+    router.initiate(
+        [{'exchange': exchanges.BINANCE_SPOT, 'symbol': 'ETH-USD', 'timeframe': timeframes.HOUR_3, 'strategy': 'Test19'}])
     assert jh.app_currency() == 'USD'
 
 
@@ -28,8 +29,6 @@ def test_base_asset():
     assert jh.base_asset('BTC-USD') == 'BTC'
     assert jh.base_asset('DEFI-USDT') == 'DEFI'
     assert jh.base_asset('DEFI-USD') == 'DEFI'
-
-
 
 
 def test_binary_search():
@@ -82,6 +81,15 @@ def test_dashless_symbol():
 
     # make sure that it works even if it's already dashless
     assert jh.dashless_symbol('BTCUSDT') == 'BTCUSDT'
+
+
+def test_dashy_symbol():
+    assert jh.dashy_symbol('BTCUSD') == 'BTC-USD'
+    assert jh.dashy_symbol('BTCUSDT') == 'BTC-USDT'
+    assert jh.dashy_symbol('BTC-USDT') == 'BTC-USDT'
+    assert jh.dashy_symbol('BTCEUR') == 'BTC-EUR'
+    assert jh.dashy_symbol('1INCHUSDT') == '1INCH-USDT'
+    assert jh.dashy_symbol('SCUSDT') == 'SC-USDT'
 
 
 def test_date_diff_in_days():
@@ -238,10 +246,6 @@ def test_is_backtesting():
     assert jh.is_backtesting() is True
 
 
-def test_is_collecting_data():
-    assert jh.is_collecting_data() is False
-
-
 def test_is_debuggable():
     debug_item = 'order_submission'
     assert jh.is_debuggable(debug_item) is False
@@ -269,10 +273,6 @@ def test_is_optimizing():
 
 def test_is_paper_trading():
     assert jh.is_paper_trading() is False
-
-
-def test_is_test_driving():
-    assert jh.is_test_driving() is False
 
 
 def test_is_unit_testing():
@@ -391,7 +391,12 @@ def test_orderbook_trim_price():
 
 def test_prepare_qty():
     assert jh.prepare_qty(10, 'sell') == -10
+    assert jh.prepare_qty(10, 'short') == -10
+    assert jh.prepare_qty(0, 'short') == 0
     assert jh.prepare_qty(-10, 'buy') == 10
+    assert jh.prepare_qty(-10, 'long') == 10
+    assert jh.prepare_qty(0, 'long') == 0
+    assert jh.prepare_qty(0, 'close') == 0.0
 
     with pytest.raises(ValueError):
         jh.prepare_qty(-10, 'invalid_input')
@@ -399,7 +404,7 @@ def test_prepare_qty():
 
 def test_python_version():
     import sys
-    assert jh.python_version() == float(f'{sys.version_info[0]}.{sys.version_info[1]}')
+    assert jh.python_version() == sys.version_info[:2]
 
 
 def test_quote_asset():
@@ -449,9 +454,39 @@ def test_round_qty_for_live_mode():
         np.array([0.001])
     )
 
+    with pytest.raises(ValueError):
+        jh.round_qty_for_live_mode(np.array([9]), -1)
+
+    # round one number only
+    to_round = 10.123456789
+    expected_result = 10.1234
+    res = jh.round_qty_for_live_mode(to_round, 4)
+    assert res == expected_result
+    assert type(res) == float
+
+    np.testing.assert_equal(
+        jh.round_qty_for_live_mode(np.array([102]), -2),
+        np.array([100])
+    )
+    np.testing.assert_equal(
+        jh.round_qty_for_live_mode(np.array([123]), -2),
+        np.array([100])
+    )
+    np.testing.assert_equal(
+        jh.round_qty_for_live_mode(np.array([163]), -2),
+        np.array([100])
+    )
+    np.testing.assert_equal(
+        jh.round_qty_for_live_mode(np.array([1263]), -2),
+        np.array([1200])
+    )
+
 
 def test_round_decimals_down():
     assert jh.round_decimals_down(100.329, 2) == 100.32
+    assert jh.round_decimals_down(115.329, -1) == 110
+    assert jh.round_decimals_down(115.329, -2) == 100
+    assert jh.round_decimals_down(115.329, 0) == 115
 
 
 def test_secure_hash():
@@ -466,9 +501,14 @@ def test_side_to_type():
     assert jh.side_to_type("buy") == "long"
     assert jh.side_to_type("sell") == "short"
 
+    # make sure title case works as well
+    assert jh.side_to_type("Buy") == "long"
+    assert jh.side_to_type("Sell") == "short"
+
 
 def test_string_after_character():
     assert jh.string_after_character('btcusdt@bookTicker', '@') == 'bookTicker'
+    assert jh.string_after_character('9000|24628', '|') == '24628'
 
 
 def test_style():
@@ -479,21 +519,6 @@ def test_style():
 def test_terminate_app():
     # uses database, which is not existing during testing
     pass
-
-
-def test_timeframe_to_one_minutes():
-    assert jh.timeframe_to_one_minutes('1m') == 1
-    assert jh.timeframe_to_one_minutes('3m') == 3
-    assert jh.timeframe_to_one_minutes('5m') == 5
-    assert jh.timeframe_to_one_minutes('15m') == 15
-    assert jh.timeframe_to_one_minutes('30m') == 30
-    assert jh.timeframe_to_one_minutes('1h') == 60
-    assert jh.timeframe_to_one_minutes('2h') == 60 * 2
-    assert jh.timeframe_to_one_minutes('3h') == 60 * 3
-    assert jh.timeframe_to_one_minutes('4h') == 60 * 4
-    assert jh.timeframe_to_one_minutes('6h') == 60 * 6
-    assert jh.timeframe_to_one_minutes('8h') == 60 * 8
-    assert jh.timeframe_to_one_minutes('1D') == 60 * 24
 
 
 def test_timestamp_to_arrow():
@@ -509,6 +534,14 @@ def test_timestamp_to_time():
     assert jh.timestamp_to_time(1558770180000) == '2019-05-25T07:43:00+00:00'
 
 
+def test_timestamp_to_iso8601():
+    assert jh.timestamp_to_iso8601(1609804800000) == '2021-01-05T00:00:00+00:00'
+
+
+def test_iso8601_to_timestamp():
+    assert jh.iso8601_to_timestamp('2021-01-05T00:00:00.000Z') == 1609804800000
+
+
 def test_today_to_timestamp():
     assert jh.today_to_timestamp() == arrow.utcnow().floor('day').int_timestamp * 1000
 
@@ -516,6 +549,10 @@ def test_today_to_timestamp():
 def test_type_to_side():
     assert jh.type_to_side('long') == 'buy'
     assert jh.type_to_side('short') == 'sell'
+
+    # validate that if sent any other string, it will raise ValueError
+    with pytest.raises(ValueError):
+        jh.type_to_side('invalid')
 
 
 def test_unique_list():
@@ -540,3 +577,85 @@ def test_unique_list():
 def test_closing_side():
     assert jh.closing_side('Long') == 'sell'
     assert jh.closing_side('Short') == 'buy'
+
+
+def test_merge_dicts():
+    client = {
+        'extra': {
+            'name': 'Saleh',
+            'new_key': 12
+        },
+        'age': 28
+    }
+
+    server = {
+        'extra': {
+            'name': 'Ocean',
+            'water': 100
+        },
+    }
+
+    expected_result = {'age': 28, 'extra': {'name': 'Ocean', 'water': 100, 'new_key': 12}}
+
+    assert expected_result == jh.merge_dicts(client, server)
+
+
+def test_get_pid():
+    assert os.getpid() == jh.get_pid()
+
+
+def test_convert_to_env_name():
+    assert jh.convert_to_env_name('Testnet Binance Futures') == 'TESTNET_BINANCE_FUTURES'
+    assert jh.convert_to_env_name('Testnet Binance') == 'TESTNET_BINANCE'
+
+
+def test_str_or_none():
+    assert jh.str_or_none('test') == 'test'
+    assert jh.str_or_none(None) is None
+    assert jh.str_or_none('') is ''
+    assert jh.str_or_none(3009004354) == '3009004354'
+    assert jh.str_or_none(b'3009004354') == '3009004354'
+    assert jh.str_or_none(1239.5) == '1239.5'
+    a = np.array([1239.5])
+    assert jh.str_or_none(a[0]) == '1239.5'
+
+
+def test_float_or_none():
+    assert jh.float_or_none(1.23) == 1.23
+    assert jh.float_or_none(1) == 1.0
+    assert jh.float_or_none(None) is None
+    assert jh.float_or_none('') is None
+    assert jh.float_or_none(b'1.23') == 1.23
+    assert jh.float_or_none('1.23') == 1.23
+
+
+def test_get_class_name():
+    class TestClass:
+        pass
+
+    assert jh.get_class_name(TestClass) == 'TestClass'
+
+    # if string is passed, it will return the string
+    assert jh.get_class_name('TestClass') == 'TestClass'
+
+
+def test_round_or_none():
+    assert jh.round_or_none(1.23) == 1
+    assert jh.round_or_none(1.23456789, 2) == 1.23
+    assert jh.round_or_none(None) is None
+
+
+def test_is_price_near():
+    assert jh.is_price_near(0.007386, 0.007385) == True
+    assert jh.is_price_near(0.007386, 0.007396) == False
+    assert jh.is_price_near(0.0250, 0.0249) == False
+    assert jh.is_price_near(60000, 60000) == True
+    assert jh.is_price_near(60000, 60000.1) == True
+    assert jh.is_price_near(60000, 60100) == False
+    assert jh.is_price_near(30000, 30005) == False
+    assert jh.is_price_near(30000, 30002) == True
+    assert jh.is_price_near(30000, 29800) == False
+    assert jh.is_price_near(200, 200.01) == True
+    assert jh.is_price_near(20, 20.001) == True
+    assert jh.is_price_near(0.0014458, 0.0014458*1.05) == False
+    assert jh.is_price_near(0.0014458, 0.0014458*1.10) == False
